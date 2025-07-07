@@ -247,6 +247,49 @@ class ChatApp {
   }
 }
 
+// Room dropdown functionality
+const roomDropdownToggle = document.getElementById("room-dropdown-toggle");
+const roomDropdownMenu = document.getElementById("room-dropdown-menu");
+const currentRoomDisplay = document.getElementById("current-room");
+
+// Toggle dropdown menu
+roomDropdownToggle.addEventListener("click", (e) => {
+  e.stopPropagation();
+  roomDropdownMenu.classList.toggle("active");
+});
+
+// Close dropdown when clicking outside
+document.addEventListener("click", () => {
+  roomDropdownMenu.classList.remove("active");
+});
+
+// Room selection
+document.querySelectorAll(".room-link").forEach((link) => {
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    const roomId = link.getAttribute("data-room-id");
+    const roomName = link.textContent;
+
+    // Update UI
+    currentRoomDisplay.textContent = roomName;
+    document
+      .querySelectorAll(".room-link")
+      .forEach((l) => l.classList.remove("active"));
+    link.classList.add("active");
+
+    // Close dropdown
+    roomDropdownMenu.classList.remove("active");
+
+    // Your existing room switching logic here
+    switchRoom(roomId);
+  });
+});
+
+// Make sure to update the current room display when switching rooms
+function updateCurrentRoomDisplay(roomName) {
+  currentRoomDisplay.textContent = roomName;
+}
+
 // Helper function to replace text emojis
 function emojify(text) {
   const emojiMap = {
