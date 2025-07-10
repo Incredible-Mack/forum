@@ -3,7 +3,7 @@ FROM php:8.2-cli
 
 # Install dependencies
 RUN apt-get update && apt-get install -y git unzip && \
-    docker-php-ext-install sockets pdo pdo_mysql
+    docker-php-ext-install sockets pdo pdo_mysql mysqli
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
