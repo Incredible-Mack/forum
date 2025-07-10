@@ -9,10 +9,11 @@ if (!is_logged_in()) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $roomName = $_POST['name'] ?? '';
+    $descriptionName = $_POST['descriptionName'];
     $userId = get_current_user_id();
 
     if (!empty($roomName)) {
-        $roomId = create_room($roomName, $userId);
+        $roomId = create_room($roomName, $userId, $descriptionName);
 
         if ($roomId) {
             echo json_encode(['success' => true, 'room_id' => $roomId]);

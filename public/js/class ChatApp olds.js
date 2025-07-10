@@ -2,91 +2,54 @@ class ChatApp {
   constructor() {
     this.elements = {};
 
-    // Get admin status from body data attribute
-    this.isAdmin = document.body.dataset.isAdmin === "true";
-
     this.ws = null;
     this.currentRoom = null;
-    this.userId = document.getElementById("user-id")?.value || "";
-    this.username = document.getElementById("username")?.value || "";
+    this.userId = document.getElementById("user-id").value;
+    this.username = document.getElementById("username").value;
     this.userInitial = this.username.charAt(0).toUpperCase();
     this.isFirstConnection = true;
 
     setTimeout(() => {
-      this.initElements();
       this.initEventListeners();
+      this.initElements();
       this.connectToServer();
-      this.setupAnnouncementModal();
       this.startActivityUpdates();
-
-      // Initialize announcement controls based on admin status
-      if (this.isAdmin) {
-        this.initAdminControls();
-      }
+      this.setupAnnouncementModal();
     }, 50);
   }
 
   initElements() {
     try {
       this.elements = {
-        announcementModal: document.getElementById("announcement-modal"),
         announcementContent: document.getElementById("announcement-content"),
-        announcementBtn: document.getElementById("announcementBtn"),
-        closeModal: document.querySelector(".close-announcement-modal"),
-
-        // Admin controls
         newAnnouncementBtn: document.getElementById("new-announcement-btn"),
+
+        announcementModal: document.getElementById("announcement-modal"),
+        announcementBtn: document.getElementById("announcementBtn"),
+        closeModal: document.querySelector(".close-modal"),
+
         announcementForm: document.getElementById("announcement-form"),
         announcementInput: document.getElementById("announcement-input"),
-
-        // Other elements
-        categoryLinks: document.querySelectorAll(".category-link"),
-        // ... rest of your elements
+        closeAnnouncementModal: document.querySelector(
+          ".close-announcement-modal"
+        ),
+        categoryLinks: document.querySelectorAll(".category-link") || [],
+        // Add all other elements you need
       };
     } catch (error) {
       console.error("Error initializing elements:", error);
-      this.elements = {};
+      this.elements = {}; // Ensure elements is always an object
     }
   }
-
-  initAdminControls() {
-    if (!this.isAdmin) return;
-
-    // Show admin controls
-    const adminControls = document.getElementById("announcement-controls");
-    if (adminControls) adminControls.style.display = "block";
-
-    // Initialize admin event listeners
-    this.elements.newAnnouncementBtn?.addEventListener("click", () => {
-      this.elements.announcementModal.style.display = "block";
-    });
-
-    this.elements.announcementForm?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      this.postAnnouncement();
-    });
-  }
-
   initEventListeners() {
-    // Announcement button click handler
-    this.elements.announcementBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      this.toggleAnnouncementModal(true);
-      this.loadAnnouncements();
-    });
-
-    // Close modal handler
-    this.elements.closeModal?.addEventListener("click", () => {
-      this.toggleAnnouncementModal(false);
-    });
-
-    // ... rest of your event listeners
+    // Room selection
     document.querySelectorAll(".room-link").forEach((link) => {
       link.addEventListener("click", (e) => {
         e.preventDefault();
         this.joinRoom(e.target.dataset.roomId, e.target.textContent);
       });
     });
+
     // Create room
     document.getElementById("create-room-btn").addEventListener("click", () => {
       const modal = document.getElementById("room-creation-modal");
@@ -127,6 +90,7 @@ class ChatApp {
       };
     });
 
+    // Message sending
     document
       .getElementById("message-input")
       .addEventListener("keypress", (e) => {
@@ -140,6 +104,7 @@ class ChatApp {
         this.sendMessage();
       }
     });
+
     document
       .querySelector(".toggle-user-list")
       .addEventListener("click", (e) => {
@@ -165,6 +130,18 @@ class ChatApp {
       }
     });
 
+    // if (this.elements.categoryLinks && this.elements.categoryLinks.length > 0) {
+    //   Array.from(this.elements.categoryLinks).forEach((link) => {
+    //     link.addEventListener("click", (e) => {
+    //       e.preventDefault();
+    //       const category = e.currentTarget.dataset.category;
+    //       this.handleCategorySelect(category);
+    //     });
+    //   });
+    // } else {
+    //   console.warn("No category links found");
+    // }
+
     if (this.elements.announcementBtn) {
       this.elements.announcementBtn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -184,9 +161,24 @@ class ChatApp {
       }
     });
 
-    // end initEventListeners
-  }
+    // Announcement controls for admin
+    if (this.isAdmin) {
+      this.elements.newAnnouncementBtn.addEventListener("click", () => {
+        this.elements.announcementModal.style.display = "block";
+      });
 
+      this.elements.announcementForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.postAnnouncement();
+      });
+
+      this.elements.closeAnnouncementModal.addEventListener("click", () => {
+        this.elements.announcementModal.style.display = "none";
+      });
+    } else {
+      document.getElementById("announcement-controls").style.display = "none";
+    }
+  }
   toggleAnnouncementModal(show) {
     if (this.elements.announcementModal) {
       this.elements.announcementModal.style.display = show ? "block" : "none";
@@ -194,65 +186,78 @@ class ChatApp {
   }
 
   setupAnnouncementModal() {
-    // Close when clicking outside
+    // Close modal when clicking outside
     window.addEventListener("click", (e) => {
       if (e.target === this.elements.announcementModal) {
-        this.toggleAnnouncementModal(false);
+        this.elements.announcementModal.style.display = "none";
       }
     });
   }
 
+  handleCategorySelect(category) {
+    // Update active category
+    this.elements.categoryLinks.forEach((link) => {
+      link.classList.toggle("active", link.dataset.category === category);
+    });
+
+    if (category === "announcements") {
+      this.loadAnnouncements();
+      this.elements.announcementModal.style.display = "block";
+    } else {
+      // Handle other categories
+      this.elements.announcementModal.style.display = "none";
+    }
+  }
+
   loadAnnouncements() {
+    // Fetch announcements from server
     fetch("get_announcements.php")
       .then((response) => response.json())
       .then((data) => {
         if (data.success) {
           this.displayAnnouncements(data.announcements);
         }
-      })
-      .catch((error) => {
-        console.error("Error loading announcements:", error);
       });
   }
 
   postAnnouncement() {
-    const announcementText = this.elements.announcementInput?.value.trim();
+    const announcementText = this.elements.announcementInput.value.trim();
     if (!announcementText) return;
 
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({
-          type: "announcement",
-          text: announcementText,
-          user_id: this.userId,
-          username: this.username,
-          time: this.formatTime(new Date()),
-        })
-      );
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const announcementData = {
+        type: "announcement",
+        text: announcementText,
+        user_id: this.userId,
+        username: this.username,
+        time: this.formatTime(new Date()),
+      };
 
-      // Clear input
-      if (this.elements.announcementInput) {
-        this.elements.announcementInput.value = "";
-      }
+      this.ws.send(JSON.stringify(announcementData));
+
+      // Clear input and close modal
+      this.elements.announcementInput.value = "";
+      this.elements.announcementModal.style.display = "none";
     }
   }
 
   displayAnnouncements(announcements) {
     const container = this.elements.announcementContent;
-    if (!container) return;
+    container.innerHTML = "";
 
-    container.innerHTML =
-      announcements.length === 0
-        ? `
-      <div class="empty-announcements">
-        <i class="fas fa-bullhorn"></i>
-        <p>No announcements yet</p>
-      </div>
-    `
-        : announcements
-            .map(
-              (announcement) => `
-      <div class="announcement-item">
+    if (announcements.length === 0) {
+      container.innerHTML = `
+        <div class="empty-announcements">
+          <i class="fas fa-bullhorn"></i>
+          <p>No announcements yet</p>
+        </div>
+      `;
+      return;
+    }
+    announcements.forEach((announcement) => {
+      const announcementEl = document.createElement("div");
+      announcementEl.className = "announcement-item";
+      announcementEl.innerHTML = `
         <div class="announcement-header">
           <div class="announcement-icon"><i class="fas fa-bullhorn"></i></div>
           <div class="announcement-title">Announcement</div>
@@ -260,13 +265,11 @@ class ChatApp {
         </div>
         <div class="announcement-text">${announcement.text}</div>
         <div class="announcement-author">Posted by ${announcement.username}</div>
-      </div>
-    `
-            )
-            .join("");
+      `;
+      container.appendChild(announcementEl);
+    });
   }
 
-  // ... rest of your class methods
   connectToServer() {
     this.ws = new WebSocket("ws://localhost:8080");
 
@@ -337,7 +340,6 @@ class ChatApp {
       setTimeout(() => this.connectToServer(), 5000); // Reconnect after 5 seconds
     };
   }
-
   showAnnouncementNotification(announcement) {
     const notification = document.createElement("div");
     notification.className = "announcement-notification";
@@ -601,7 +603,6 @@ class ChatApp {
   }
   displayMessage(message, scroll = true) {
     const container = document.getElementById("messages-container");
-    if (!container) return;
 
     // Check if message already exists
     if (document.getElementById(`message-${message.id}`)) {
@@ -617,156 +618,44 @@ class ChatApp {
     let contentHtml = "";
     if (message.is_file) {
       const fileExt = message.file_path.split(".").pop().toLowerCase();
-      const fileName = message.text;
-
-      // Image files
-      if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(fileExt)) {
-        contentHtml = `
-                <div class="file-preview image-preview">
-                    <img src="${message.file_path}" alt="${fileName}" class="chat-file">
-                    <div class="file-meta">
-                        <span class="file-name">${fileName}</span>
-                        <a href="${message.file_path}" download="${fileName}" class="download-link" title="Download">
-                            <i class="fas fa-download"></i>
-                        </a>
-                    </div>
-                </div>
-            `;
-      }
-      // Video files
-      else if (["mp4", "webm", "ogg", "mov"].includes(fileExt)) {
-        contentHtml = `
-                <div class="file-preview video-preview">
-                    <video controls class="chat-file">
-                        <source src="${message.file_path}" type="video/${fileExt}">
-                        Your browser does not support the video tag.
-                    </video>
-                    <div class="file-meta">
-                        <span class="file-name">${fileName}</span>
-                        <a href="${message.file_path}" download="${fileName}" class="download-link" title="Download">
-                            <i class="fas fa-download"></i>
-                        </a>
-                    </div>
-                </div>
-            `;
-      }
-      // Audio files
-      else if (["mp3", "wav", "ogg", "m4a"].includes(fileExt)) {
-        contentHtml = `
-                <div class="file-preview audio-preview">
-                    <audio controls class="chat-file">
-                        <source src="${message.file_path}" type="audio/${fileExt}">
-                        Your browser does not support the audio element.
-                    </audio>
-                    <div class="file-meta">
-                        <span class="file-name">${fileName}</span>
-                        <a href="${message.file_path}" download="${fileName}" class="download-link" title="Download">
-                            <i class="fas fa-download"></i>
-                        </a>
-                    </div>
-                </div>
-            `;
-      }
-      // PDF files
-      else if (fileExt === "pdf") {
-        contentHtml = `
-                <div class="file-preview pdf-preview">
-                    <div class="pdf-container">
-                        <i class="fas fa-file-pdf pdf-icon"></i>
-                        <div class="pdf-info">
-                            <span class="file-name">${fileName}</span>
-                            <div class="pdf-actions">
-                                <a href="${message.file_path}" target="_blank" class="view-link" title="View">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                                <a href="${message.file_path}" download="${fileName}" class="download-link" title="Download">
-                                    <i class="fas fa-download"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-      }
-      // Document files (Word, Excel, etc.)
-      else if (
-        ["doc", "docx", "xls", "xlsx", "ppt", "pptx"].includes(fileExt)
-      ) {
-        const iconClass = {
-          doc: "fa-file-word",
-          docx: "fa-file-word",
-          xls: "fa-file-excel",
-          xlsx: "fa-file-excel",
-          ppt: "fa-file-powerpoint",
-          pptx: "fa-file-powerpoint",
-        }[fileExt];
-
-        contentHtml = `
-                <div class="file-preview document-preview">
-                    <div class="document-container">
-                        <i class="fas ${iconClass} document-icon"></i>
-                        <div class="document-info">
-                            <span class="file-name">${fileName}</span>
-                            <a href="${message.file_path}" download="${fileName}" class="download-link" title="Download">
-                                <i class="fas fa-download"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            `;
-      }
-      // Other files (generic download)
-      else {
-        contentHtml = `
-                <div class="file-preview generic-preview">
-                    <div class="generic-container">
-                        <i class="fas fa-file generic-icon"></i>
-                        <div class="generic-info">
-                            <span class="file-name">${fileName}</span>
-                            <a href="${message.file_path}" download="${fileName}" class="download-link" title="Download">
-                                <i class="fas fa-download"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            `;
+      if (["jpg", "jpeg", "png", "gif"].includes(fileExt)) {
+        contentHtml = `<img src="${message.file_path}" alt="${message.text}" class="chat-image">`;
+      } else {
+        contentHtml = `<a href="${message.file_path}" download="${message.text}">Download ${message.text}</a>`;
       }
     } else {
       contentHtml = this.emojify(message.text);
     }
 
-    // Add delete icon only for own messages or admin
+    // Add delete icon only for own messages
     const isAdmin = document.body.dataset.isAdmin === "true";
+
     const deleteIcon =
       message.is_own || isAdmin
-        ? `
-        <div class="message-actions" title="Delete Message">
-            <i class="fas fa-trash delete-message" data-message-id="${message.id}"></i>
-        </div>
-    `
+        ? `<div class="message-actions" title='Delete Message'>
+       <i class="fas fa-trash delete-message" data-message-id="${message.id}"></i>
+     </div>`
         : "";
 
     messageEl.innerHTML = `
-        <div class="message-content">
-            <div class="message-info">
-                <div class="message-user">
-                    <div class="message-user-avatar">${
-                      message.user_initials
-                    }</div>
-                    <span class="message-user-name">${message.username}</span>
-                </div>
-                <div class="message-time-actions">
-                    <span class="message-time">${message.time}</span>
-                    ${deleteIcon}
-                </div>
-            </div>
-            <div class="message-text">${contentHtml}</div>
-            ${
-              message.thread_count > 0
-                ? `<div class="thread-count">${message.thread_count} replies</div>`
-                : ""
-            }
+      <div class="message-content">
+        <div class="message-info">
+          <div class="message-user">
+            <div class="message-user-avatar">${message.user_initials}</div>
+            <span class="message-user-name">${message.username}</span>
+          </div>
+          <div div class = "message-time-actions">
+            <span class="message-time">${message.time}</span>
+            ${deleteIcon}
+          </div>
         </div>
+        <div class="message-text">${contentHtml}</div>
+        ${
+          message.thread_count > 0
+            ? `<div class="thread-count">${message.thread_count} replies</div>`
+            : ""
+        }
+      </div>
     `;
 
     container.appendChild(messageEl);
@@ -775,21 +664,17 @@ class ChatApp {
     if (message.is_own || isAdmin) {
       messageEl
         .querySelector(".delete-message")
-        ?.addEventListener("click", (e) => {
+        .addEventListener("click", (e) => {
           e.stopPropagation();
           this.deleteMessage(message.id);
         });
     }
 
-    // Add click handler for any download links
-    messageEl.querySelectorAll(".download-link").forEach((link) => {
-      link.addEventListener("click", (e) => e.stopPropagation());
-    });
-
     if (scroll) {
       container.scrollTop = container.scrollHeight;
     }
   }
+
   async deleteMessage(messageId) {
     if (confirm("Are you sure you want to delete this message?")) {
       try {

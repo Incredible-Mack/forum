@@ -18,13 +18,13 @@ function get_rooms()
     return $rooms;
 }
 
-function create_room($name, $user_id)
+function create_room($name, $user_id, $descriptionName)
 {
     $conn = get_db_connection();
     $name = mysqli_real_escape_string($conn, $name);
-
-    $stmt = mysqli_prepare($conn, "INSERT INTO rooms (name, created_by) VALUES (?, ?)");
-    mysqli_stmt_bind_param($stmt, "si", $name, $user_id);
+    $descriptionName = mysqli_real_escape_string($conn, $descriptionName);
+    $stmt = mysqli_prepare($conn, "INSERT INTO rooms (name, created_by, description) VALUES (?, ?, ?)");
+    mysqli_stmt_bind_param($stmt, "sis", $name, $user_id, $descriptionName);
     $result = mysqli_stmt_execute($stmt);
     $room_id = mysqli_insert_id($conn);
 
