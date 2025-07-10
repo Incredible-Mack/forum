@@ -31,105 +31,198 @@ class Chat implements MessageComponentInterface
     public function onMessage(ConnectionInterface $from, $msg)
     {
         $data = json_decode($msg, true);
-        $conn = get_db_connection();
-
-        switch ($data['type']) {
-            case 'join':
-                // Join a room
-                $this->users[$from->resourceId] = [
-                    'id' => $data['user_id'],
-                    'name' => $data['username'],
-                    'room_id' => $data['room_id']
-                ];
-
-                if (!isset($this->rooms[$data['room_id']])) {
-                    $this->rooms[$data['room_id']] = new \SplObjectStorage;
-                }
-
-                $this->rooms[$data['room_id']]->attach($from);
-
-                // Load previous messages
-                $messages = $this->get_room_messages($data['room_id']);
-                $from->send(json_encode([
-                    'type' => 'history',
-                    'messages' => $messages
-                ]));
-
-                // Notify others in the room
-                $this->broadcastToRoom($data['room_id'], json_encode([
-                    'type' => 'join',
-                    'user' => $data['username'],
-                    'users' => $this->get_room_users($data['room_id'])
-                ]), $from);
-                break;
-
-            case 'message':
-                // Save message to database
-                $user = $this->users[$from->resourceId];
-                $message_text = mysqli_real_escape_string($conn, $data['text']);
-
-                $stmt = mysqli_prepare(
-                    $conn,
-                    "INSERT INTO messages (room_id, user_id, message) 
-                     VALUES (?, ?, ?)"
-                );
-                mysqli_stmt_bind_param($stmt, "iis", $user['room_id'], $user['id'], $message_text);
-                mysqli_stmt_execute($stmt);
-                $message_id = mysqli_insert_id($conn);
-
-                // Broadcast to room
-                $this->broadcastToRoom($user['room_id'], json_encode([
-                    'type' => 'message',
-                    'id' => $message_id,
-                    'user' => $user['name'],
-                    'user_id' => $user['id'],
-                    'text' => $data['text'],
-                    'time' => date('H:i'),
-                    'is_file' => false
-                ]));
-                break;
-
-            case 'file':
-                // File upload notification
-                $user = $this->users[$from->resourceId];
-                $file_message = get_file_message($data['message_id']);
-
-                $this->broadcastToRoom($user['room_id'], json_encode([
-                    'type' => 'message',
-                    'id' => $file_message['id'],
-                    'user' => $file_message['username'],
-                    'user_id' => $file_message['user_id'],
-                    'text' => $file_message['message'],
-                    'file_path' => $file_message['file_path'],
-                    'time' => date('H:i', strtotime($file_message['created_at'])),
-                    'is_file' => true
-                ]));
-                break;
+        if (json_last_error() !== JSON_ERROR_NONE || !isset($data['type'])) {
+            echo "Invalid JSON data received\n";
+            return;
         }
 
-        mysqli_close($conn);
+        try {
+            switch ($data['type']) {
+                case 'join':
+                    $this->handleJoin($from, $data);
+                    break;
+
+                case 'message':
+                    $this->handleMessage($from, $data);
+                    break;
+
+                case 'file':
+                    $this->handleFile($from, $data);
+                    break;
+
+                default:
+                    echo "Unknown message type: {$data['type']}\n";
+            }
+        } catch (Exception $e) {
+            echo "Error processing message: " . $e->getMessage() . "\n";
+        }
     }
+
+    protected function handleJoin(ConnectionInterface $from, array $data)
+    {
+        if (!isset($data['user_id'], $data['username'], $data['room_id'])) {
+            throw new Exception("Missing required join data");
+        }
+
+        $this->users[$from->resourceId] = [
+            'id' => (int)$data['user_id'],
+            'name' => trim($data['username']),
+            'room_id' => (int)$data['room_id']
+        ];
+
+        $roomId = $this->users[$from->resourceId]['room_id'];
+
+        if (!isset($this->rooms[$roomId])) {
+            $this->rooms[$roomId] = new \SplObjectStorage;
+        }
+
+        $this->rooms[$roomId]->attach($from);
+
+        // Load previous messages
+        $messages = $this->get_room_messages($roomId);
+        $from->send(json_encode([
+            'type' => 'history',
+            'messages' => $messages
+        ]));
+
+        // Notify others in the room
+        $this->broadcastToRoom($roomId, json_encode([
+            'type' => 'join',
+            'user' => $this->users[$from->resourceId]['name'],
+            'users' => $this->get_room_users($roomId)
+        ]), $from);
+    }
+
+
+
+
+    protected function handleMessage(ConnectionInterface $from, array $data)
+    {
+        if (!isset($data['text']) || !isset($this->users[$from->resourceId])) {
+            throw new Exception("Invalid message data");
+        }
+
+        $user = $this->users[$from->resourceId];
+        $messageData = [
+            'room_id' => $user['room_id'],
+            'user_id' => $user['id'],
+            'message' => $data['text'],
+            'is_file' => false
+        ];
+
+        // Changed to use messages.php with POST
+        $messageResponse = $this->callApi('POST', 'messages.php', $messageData);
+
+        if (!$messageResponse || !isset($messageResponse['id'])) {
+            throw new Exception("Failed to save message");
+        }
+
+        $this->broadcastToRoom($user['room_id'], json_encode([
+            'type' => 'message',
+            'id' => $messageResponse['id'],
+            'user' => $user['name'],
+            'user_id' => $user['id'],
+            'text' => $data['text'],
+            'time' => date('H:i'),
+            'is_file' => false
+        ]));
+    }
+
+    protected function handleFile(ConnectionInterface $from, array $data)
+    {
+        if (!isset($data['message_id']) || !isset($this->users[$from->resourceId])) {
+            throw new Exception("Invalid file data");
+        }
+
+        $user = $this->users[$from->resourceId];
+
+        // Changed to use singlemessage.php with GET parameter
+        $file_message = $this->callApi('GET', 'singlemessage.php?id=' . $data['message_id']);
+
+        if (!$file_message) {
+            throw new Exception("File message not found");
+        }
+
+        $this->broadcastToRoom($user['room_id'], json_encode([
+            'type' => 'message',
+            'id' => $file_message['id'],
+            'user' => $file_message['username'],
+            'user_id' => $file_message['user_id'],
+            'text' => $file_message['message'],
+            'file_path' => $file_message['file_path'],
+            'time' => date('H:i', strtotime($file_message['created_at'])),
+            'is_file' => true
+        ]));
+    }
+
+    protected function get_room_messages($room_id, $limit = 50)
+    {
+        // Changed to use messages.php with GET parameters
+        $response = $this->callApi('GET', "messages.php?room_id=$room_id&limit=$limit");
+        return $response['messages'] ?? [];
+    }
+
+    protected function callApi($method, $endpoint, $data = [])
+    {
+        $baseUrl = 'http://parentforum.lovetoons.org/api/';
+        $url = rtrim($baseUrl, '/') . '/' . ltrim($endpoint, '/');
+
+        $ch = curl_init();
+        $options = [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_FAILONERROR => true
+        ];
+
+        if ($method === 'POST' || $method === 'PUT') {
+            $options[CURLOPT_POSTFIELDS] = json_encode($data);
+        }
+
+        curl_setopt_array($ch, $options);
+
+        $response = curl_exec($ch);
+        $error = curl_error($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($error) {
+            echo "API Error: $error\n";
+            return false;
+        }
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return json_decode($response, true);
+        }
+
+        echo "API returned HTTP $httpCode\n";
+        return false;
+    }
+
 
     public function onClose(ConnectionInterface $conn)
     {
-        if (isset($this->users[$conn->resourceId])) {
-            $user = $this->users[$conn->resourceId];
-            $room_id = $user['room_id'];
-
-            if (isset($this->rooms[$room_id])) {
-                $this->rooms[$room_id]->detach($conn);
-
-                // Notify others in the room
-                $this->broadcastToRoom($room_id, json_encode([
-                    'type' => 'leave',
-                    'user' => $user['name'],
-                    'users' => $this->get_room_users($room_id)
-                ]), $conn);
-            }
-
-            unset($this->users[$conn->resourceId]);
+        if (!isset($this->users[$conn->resourceId])) {
+            $this->clients->detach($conn);
+            return;
         }
 
+        $user = $this->users[$conn->resourceId];
+        $room_id = $user['room_id'];
+
+        if (isset($this->rooms[$room_id])) {
+            $this->rooms[$room_id]->detach($conn);
+
+            $this->broadcastToRoom($room_id, json_encode([
+                'type' => 'leave',
+                'user' => $user['name'],
+                'users' => $this->get_room_users($room_id)
+            ]), $conn);
+        }
+
+        unset($this->users[$conn->resourceId]);
         $this->clients->detach($conn);
     }
 
@@ -141,11 +234,13 @@ class Chat implements MessageComponentInterface
 
     protected function broadcastToRoom($room_id, $message, $exclude = null)
     {
-        if (isset($this->rooms[$room_id])) {
-            foreach ($this->rooms[$room_id] as $client) {
-                if ($client !== $exclude) {
-                    $client->send($message);
-                }
+        if (!isset($this->rooms[$room_id])) {
+            return;
+        }
+
+        foreach ($this->rooms[$room_id] as $client) {
+            if ($client !== $exclude) {
+                $client->send($message);
             }
         }
     }
@@ -161,40 +256,6 @@ class Chat implements MessageComponentInterface
             }
         }
         return array_unique($users);
-    }
-
-    protected function get_room_messages($room_id, $limit = 50)
-    {
-        $conn = get_db_connection();
-        $stmt = mysqli_prepare(
-            $conn,
-            "SELECT m.*, u.username 
-             FROM messages m 
-             JOIN users u ON m.user_id = u.id 
-             WHERE m.room_id = ? 
-             ORDER BY m.created_at DESC 
-             LIMIT ?"
-        );
-
-        mysqli_stmt_bind_param($stmt, "ii", $room_id, $limit);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-
-        $messages = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $messages[] = [
-                'id' => $row['id'],
-                'user' => $row['username'],
-                'user_id' => $row['user_id'],
-                'text' => $row['message'],
-                'time' => date('H:i', strtotime($row['created_at'])),
-                'is_file' => (bool)$row['is_file'],
-                'file_path' => $row['file_path']
-            ];
-        }
-
-        mysqli_close($conn);
-        return array_reverse($messages);
     }
 }
 
