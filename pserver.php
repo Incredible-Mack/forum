@@ -1,6 +1,5 @@
 <?php
 require __DIR__ . '/vendor/autoload.php';
-require __DIR__ . '/includes/helpers.php';
 
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;

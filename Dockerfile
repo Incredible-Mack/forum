@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y git unzip && \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Set working directory
-WORKDIR /app
+WORKDIR /forum
 
 # Copy Composer files first (for layer caching)
 COPY composer.json composer.lock ./
@@ -24,4 +24,4 @@ COPY . .
 EXPOSE 8080
 
 # Run the PHP WebSocket server
-CMD ["php", "server.php"]
+CMD ["php", "pserver.php"]
